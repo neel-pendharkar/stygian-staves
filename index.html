@@ -2,7 +2,8 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Mini Music App - Random Notes + Hi-Hat Metronome</title>
+  <title>Mini Music App - Sheet Music + Random Notes + Metronome</title>
+  <script src="https://cdn.jsdelivr.net/npm/vexflow/releases/vexflow-min.js"></script>
   <style>
     body {
       font-family: sans-serif;
@@ -17,23 +18,24 @@
       padding: 15px;
       border: 2px solid #ccc;
       border-radius: 8px;
+      text-align: center;
     }
 
-    #devices {
+    #sheet {
       margin-top: 20px;
     }
 
-    #bpmControl {
+    #devices, #bpmControl {
       margin-top: 20px;
     }
   </style>
 </head>
 <body>
-  <h1>Mini Music App - Random Notes + Hi-Hat Metronome</h1>
+  <h1>Mini Music App - Sheet Music + Random Notes + Hi-Hat Metronome</h1>
   <div id="status">Waiting for MIDI...</div>
   <div id="devices">Connected devices will appear here...</div>
 
-  <div id="target-note" class="note-block">Target Note: —</div>
+  <div id="sheet" class="note-block">Sheet will appear here</div>
   <div id="note" class="note-block">Your Note: —</div>
 
   <div id="bpmControl">
@@ -45,7 +47,7 @@
     const status = document.getElementById("status");
     const devicesDiv = document.getElementById("devices");
     const noteDiv = document.getElementById("note");
-    const targetDiv = document.getElementById("target-note");
+    const sheetDiv = document.getElementById("sheet");
     const bpmInput = document.getElementById("bpmInput");
 
     // --- Notes ---
@@ -59,24 +61,17 @@
 
     // Hi-hat style click using short white noise burst
     function playClick() {
-      const bufferSize = audioCtx.sampleRate * 0.02; // 20ms noise
+      const bufferSize = audioCtx.sampleRate * 0.02;
       const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
       const data = buffer.getChannelData(0);
-
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1; // white noise
-      }
-
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
       const noise = audioCtx.createBufferSource();
       noise.buffer = buffer;
-
       const gainNode = audioCtx.createGain();
       gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.02);
-
       noise.connect(gainNode);
       gainNode.connect(audioCtx.destination);
-
       noise.start();
       noise.stop(audioCtx.currentTime + 0.02);
     }
@@ -96,9 +91,7 @@
 
     // --- Resume AudioContext on first user interaction ---
     function resumeAudio() {
-      if (audioCtx.state === "suspended") {
-        audioCtx.resume();
-      }
+      if (audioCtx.state === "suspended") audioCtx.resume();
     }
     document.body.addEventListener("click", resumeAudio, { once: true });
     document.body.addEventListener("touchstart", resumeAudio, { once: true });
@@ -111,12 +104,43 @@
     }
 
     function getRandomNote() {
-      const midiNumber = Math.floor(Math.random() * (72 - 60 + 1)) + 60; // C4 to C5
+      const midiNumber = Math.floor(Math.random() * (72 - 60 + 1)) + 60; // C4-C5
       return midiNoteToName(midiNumber);
     }
 
+    function updateSheet(noteName) {
+      // Clear previous rendering
+      sheetDiv.innerHTML = "";
+
+      const VF = Vex.Flow;
+      const div = sheetDiv;
+      const renderer = new VF.Renderer(div, VF.Renderer.Backends.SVG);
+      renderer.resize(300, 150);
+      const context = renderer.getContext();
+      context.setFont("Arial", 10);
+
+      const stave = new VF.Stave(10, 40, 280);
+      stave.addClef("treble");
+      stave.setContext(context).draw();
+
+      // Convert noteName to VexFlow format
+      let vfNoteName = noteName[0].toLowerCase();
+      let octave = parseInt(noteName.slice(-1));
+      if (noteName.includes("#")) vfNoteName += "#";
+
+      const note = new VF.StaveNote({ clef: "treble", keys: [`${vfNoteName}/${octave}`], duration: "q" });
+      if (vfNoteName.includes("#")) note.addAccidental(0, new VF.Accidental("#"));
+
+      const voice = new VF.Voice({ num_beats: 1, beat_value: 4 });
+      voice.addTickables([note]);
+
+      const formatter = new VF.Formatter().joinVoices([voice]).format([voice], 280);
+      voice.draw(context, stave);
+    }
+
     function updateTargetNote() {
-      targetDiv.textContent = `Target Note: ${targetNote}`;
+      targetDiv = targetNote; // for debugging
+      updateSheet(targetNote);
     }
 
     function checkNote(noteName) {
@@ -168,7 +192,7 @@
           setupMidiInputs(midiAccess);
           targetNote = getRandomNote();
           updateTargetNote();
-          startMetronome(); // Start hi-hat ticking
+          startMetronome();
         },
         () => {
           status.textContent = "MIDI access denied";
