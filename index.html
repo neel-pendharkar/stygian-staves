@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Mini Music App - Random Notes</title>
+  <title>Mini Music App - Random Notes + Metronome</title>
   <style>
     body {
       font-family: sans-serif;
@@ -16,59 +16,88 @@
     #devices {
       margin-top: 20px;
     }
+    #bpmControl {
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
-  <h1>Mini Music App - Random Notes</h1>
+  <h1>Mini Music App - Random Notes + Metronome</h1>
   <div id="status">Waiting for MIDI...</div>
   <div id="devices">Connected devices will appear here...</div>
   <div id="target-note">Target Note: —</div>
   <div id="note">Your Note: —</div>
 
+  <div id="bpmControl">
+    <label>BPM: <input type="number" id="bpmInput" value="60" min="30" max="240"></label>
+  </div>
+
   <script>
+    // --- DOM Elements ---
     const status = document.getElementById("status");
     const devicesDiv = document.getElementById("devices");
     const noteDiv = document.getElementById("note");
     const targetDiv = document.getElementById("target-note");
+    const bpmInput = document.getElementById("bpmInput");
 
+    // --- Notes ---
     const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-    // Current target note
     let targetNote = "";
 
-    // Convert MIDI number to note name
+    // --- Web Audio for Metronome ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let bpm = parseInt(bpmInput.value);
+    let metronomeInterval = null;
+
+    function playClick() {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.value = 1000; // 1kHz click
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.05); // 50ms click
+    }
+
+    function startMetronome() {
+      if (metronomeInterval) clearInterval(metronomeInterval);
+      const interval = (60 / bpm) * 1000;
+      metronomeInterval = setInterval(playClick, interval);
+    }
+
+    function setBPM(newBPM) {
+      bpm = newBPM;
+      startMetronome();
+    }
+
+    bpmInput.addEventListener("change", () => setBPM(parseInt(bpmInput.value)));
+
+    // --- MIDI Utilities ---
     function midiNoteToName(note) {
       const name = NOTE_NAMES[note % 12];
       const octave = Math.floor(note / 12) - 1;
       return name + octave;
     }
 
-    // Convert note name (e.g., C4) to MIDI number
-    function noteNameToMidi(noteName) {
-      const regex = /^([A-G]#?)(\d)$/;
-      const match = noteName.match(regex);
-      if (!match) return null;
-      const [_, note, octave] = match;
-      const noteIndex = NOTE_NAMES.indexOf(note);
-      return (parseInt(octave) + 1) * 12 + noteIndex;
-    }
-
-    // Generate a random note between C4 (60) and C5 (72)
     function getRandomNote() {
-      const midiNumber = Math.floor(Math.random() * (72 - 60 + 1)) + 60;
+      const midiNumber = Math.floor(Math.random() * (72 - 60 + 1)) + 60; // C4 to C5
       return midiNoteToName(midiNumber);
     }
 
-    // Update the target note display
     function updateTargetNote() {
       targetDiv.textContent = `Target Note: ${targetNote}`;
     }
 
-    // Handle incoming MIDI messages
+    function checkNote(noteName) {
+      if (noteName === targetNote) {
+        targetNote = getRandomNote();
+        updateTargetNote();
+      }
+    }
+
     function handleMidiMessage(msg) {
       const [type, note, velocity] = msg.data;
-
-      // Note ON
       if (type === 144 && velocity > 0) {
         const noteName = midiNoteToName(note);
         noteDiv.textContent = `Your Note: ${noteName}`;
@@ -76,15 +105,6 @@
       }
     }
 
-    // Check if played note matches target
-    function checkNote(noteName) {
-      if (noteName === targetNote) {
-        targetNote = getRandomNote(); // new random note
-        updateTargetNote();
-      }
-    }
-
-    // Display connected MIDI devices
     function listMidiDevices(midiAccess) {
       if (midiAccess.inputs.size === 0) {
         devicesDiv.textContent = "No MIDI devices connected.";
@@ -99,14 +119,12 @@
       devicesDiv.innerHTML = list;
     }
 
-    // Setup MIDI input listeners
     function setupMidiInputs(midiAccess) {
       for (const input of midiAccess.inputs.values()) {
         input.onmidimessage = handleMidiMessage;
       }
     }
 
-    // Initialize MIDI
     function initMidi() {
       if (!navigator.requestMIDIAccess) {
         status.textContent = "Web MIDI not supported";
@@ -120,6 +138,7 @@
           setupMidiInputs(midiAccess);
           targetNote = getRandomNote();
           updateTargetNote();
+          startMetronome(); // Start ticking immediately
         },
         () => {
           status.textContent = "MIDI access denied";
@@ -127,7 +146,7 @@
       );
     }
 
-    // Start
+    // --- Start ---
     initMidi();
   </script>
 </body>
