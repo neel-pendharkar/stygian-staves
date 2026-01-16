@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>MIDI Test</title>
+  <title>Web MIDI Test</title>
   <style>
     body {
       font-family: sans-serif;
@@ -13,53 +13,89 @@
       font-size: 40px;
       margin-top: 20px;
     }
+    #devices {
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
   <h1>Web MIDI Test</h1>
   <div id="status">Waiting for MIDI...</div>
+  <div id="devices">Connected devices will appear here...</div>
   <div id="note">—</div>
 
   <script>
     const status = document.getElementById("status");
+    const devicesDiv = document.getElementById("devices");
     const noteDiv = document.getElementById("note");
 
     const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
+    // Convert MIDI note number to note name
     function midiNoteToName(note) {
       const name = NOTE_NAMES[note % 12];
       const octave = Math.floor(note / 12) - 1;
       return name + octave;
     }
 
-    if (!navigator.requestMIDIAccess) {
-      status.textContent = "Web MIDI not supported";
-    } else {
+    // Display connected MIDI devices
+    function listMidiDevices(midiAccess) {
+      if (midiAccess.inputs.size === 0) {
+        devicesDiv.textContent = "No MIDI devices connected.";
+        return;
+      }
+
+      let list = "<ul>";
+      for (const input of midiAccess.inputs.values()) {
+        list += `<li><strong>${input.name}</strong> - ${input.manufacturer} (ID: ${input.id})</li>`;
+      }
+      list += "</ul>";
+      devicesDiv.innerHTML = list;
+    }
+
+    // Handle incoming MIDI messages
+    function handleMidiMessage(msg) {
+      const [type, note, velocity] = msg.data;
+
+      // Note ON
+      if (type === 144 && velocity > 0) {
+        noteDiv.textContent = midiNoteToName(note);
+      }
+
+      // Note OFF
+      if (type === 128 || (type === 144 && velocity === 0)) {
+        noteDiv.textContent = "—";
+      }
+    }
+
+    // Set up MIDI input listeners
+    function setupMidiInputs(midiAccess) {
+      for (const input of midiAccess.inputs.values()) {
+        input.onmidimessage = handleMidiMessage;
+      }
+    }
+
+    // Initialize MIDI
+    function initMidi() {
+      if (!navigator.requestMIDIAccess) {
+        status.textContent = "Web MIDI not supported";
+        return;
+      }
+
       navigator.requestMIDIAccess().then(
-        (midi) => {
+        (midiAccess) => {
           status.textContent = "MIDI ready";
-
-          for (const input of midi.inputs.values()) {
-            input.onmidimessage = (msg) => {
-              const [type, note, velocity] = msg.data;
-
-              // note on
-              if (type === 144 && velocity > 0) {
-                noteDiv.textContent = midiNoteToName(note);
-              }
-
-              // note off
-              if (type === 128 || (type === 144 && velocity === 0)) {
-                noteDiv.textContent = "—";
-              }
-            };
-          }
+          listMidiDevices(midiAccess);
+          setupMidiInputs(midiAccess);
         },
         () => {
           status.textContent = "MIDI access denied";
         }
       );
     }
+
+    // Start MIDI
+    initMidi();
   </script>
 </body>
 </html>
