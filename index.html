@@ -2,31 +2,39 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Mini Music App - Random Notes + Metronome</title>
+  <title>Mini Music App - Random Notes + Hi-Hat Metronome</title>
   <style>
     body {
       font-family: sans-serif;
       padding: 20px;
       font-size: 20px;
     }
-    #note, #target-note {
+
+    .note-block {
       font-size: 40px;
       margin-top: 20px;
+      margin-bottom: 40px; /* extra spacing between sections */
+      padding: 15px;
+      border: 2px solid #ccc;
+      border-radius: 8px;
     }
+
     #devices {
       margin-top: 20px;
     }
+
     #bpmControl {
       margin-top: 20px;
     }
   </style>
 </head>
 <body>
-  <h1>Mini Music App - Random Notes + Metronome</h1>
+  <h1>Mini Music App - Random Notes + Hi-Hat Metronome</h1>
   <div id="status">Waiting for MIDI...</div>
   <div id="devices">Connected devices will appear here...</div>
-  <div id="target-note">Target Note: —</div>
-  <div id="note">Your Note: —</div>
+
+  <div id="target-note" class="note-block">Target Note: —</div>
+  <div id="note" class="note-block">Your Note: —</div>
 
   <div id="bpmControl">
     <label>BPM: <input type="number" id="bpmInput" value="60" min="30" max="240"></label>
@@ -49,15 +57,28 @@
     let bpm = parseInt(bpmInput.value);
     let metronomeInterval = null;
 
+    // Hi-hat style click using short white noise burst
     function playClick() {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.frequency.value = 1000; // 1kHz click
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.05); // 50ms click
+      const bufferSize = audioCtx.sampleRate * 0.02; // 20ms noise
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1; // white noise
+      }
+
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.02);
+
+      noise.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      noise.start();
+      noise.stop(audioCtx.currentTime + 0.02);
     }
 
     function startMetronome() {
@@ -72,6 +93,15 @@
     }
 
     bpmInput.addEventListener("change", () => setBPM(parseInt(bpmInput.value)));
+
+    // --- Resume AudioContext on first user interaction ---
+    function resumeAudio() {
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+    }
+    document.body.addEventListener("click", resumeAudio, { once: true });
+    document.body.addEventListener("touchstart", resumeAudio, { once: true });
 
     // --- MIDI Utilities ---
     function midiNoteToName(note) {
@@ -98,7 +128,7 @@
 
     function handleMidiMessage(msg) {
       const [type, note, velocity] = msg.data;
-      if (type === 144 && velocity > 0) {
+      if (type === 144 && velocity > 0) { // Note ON
         const noteName = midiNoteToName(note);
         noteDiv.textContent = `Your Note: ${noteName}`;
         checkNote(noteName);
@@ -138,7 +168,7 @@
           setupMidiInputs(midiAccess);
           targetNote = getRandomNote();
           updateTargetNote();
-          startMetronome(); // Start ticking immediately
+          startMetronome(); // Start hi-hat ticking
         },
         () => {
           status.textContent = "MIDI access denied";
@@ -146,7 +176,7 @@
       );
     }
 
-    // --- Start ---
+    // --- Start App ---
     initMidi();
   </script>
 </body>
