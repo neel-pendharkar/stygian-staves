@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>MIDI Test</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      font-size: 20px;
+    }
+    #note {
+      font-size: 40px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Web MIDI Test</h1>
+  <div id="status">Waiting for MIDI...</div>
+  <div id="note">—</div>
+
+  <script>
+    const status = document.getElementById("status");
+    const noteDiv = document.getElementById("note");
+
+    const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+    function midiNoteToName(note) {
+      const name = NOTE_NAMES[note % 12];
+      const octave = Math.floor(note / 12) - 1;
+      return name + octave;
+    }
+
+    if (!navigator.requestMIDIAccess) {
+      status.textContent = "Web MIDI not supported";
+    } else {
+      navigator.requestMIDIAccess().then(
+        (midi) => {
+          status.textContent = "MIDI ready";
+
+          for (const input of midi.inputs.values()) {
+            input.onmidimessage = (msg) => {
+              const [type, note, velocity] = msg.data;
+
+              // note on
+              if (type === 144 && velocity > 0) {
+                noteDiv.textContent = midiNoteToName(note);
+              }
+
+              // note off
+              if (type === 128 || (type === 144 && velocity === 0)) {
+                noteDiv.textContent = "—";
+              }
+            };
+          }
+        },
+        () => {
+          status.textContent = "MIDI access denied";
+        }
+      );
+    }
+  </script>
+</body>
+</html>
