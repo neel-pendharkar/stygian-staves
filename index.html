@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Mini Music App - Sheet Music + Random Notes + Metronome</title>
+  <title>Mini Music App - Random Chords + Metronome</title>
   <script src="https://cdn.jsdelivr.net/npm/vexflow/releases/vexflow-min.js"></script>
   <style>
     body {
@@ -11,18 +11,24 @@
       font-size: 20px;
     }
 
-    .note-block {
-      font-size: 40px;
-      margin-top: 20px;
-      margin-bottom: 40px; /* extra spacing between sections */
-      padding: 15px;
+    #targetWrapper {
+      width: 100%;
       border: 2px solid #ccc;
       border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 20px;
+    }
+
+    .chordName {
+      font-size: 28px;
+      font-weight: bold;
+      margin-bottom: 10px;
       text-align: center;
     }
 
-    #sheet {
-      margin-top: 20px;
+    #targetSheet {
+      font-size: 32px;
+      text-align: center;
     }
 
     #devices, #bpmControl {
@@ -31,177 +37,159 @@
   </style>
 </head>
 <body>
-  <h1>Mini Music App - Sheet Music + Random Notes + Hi-Hat Metronome</h1>
-  <div id="status">Waiting for MIDI...</div>
-  <div id="devices">Connected devices will appear here...</div>
 
-  <div id="sheet" class="note-block">Sheet will appear here</div>
-  <div id="note" class="note-block">Your Note: —</div>
+<h1>Mini Music App – Random Chords</h1>
+<div id="status">Waiting for MIDI…</div>
+<div id="devices"></div>
 
-  <div id="bpmControl">
-    <label>BPM: <input type="number" id="bpmInput" value="60" min="30" max="240"></label>
-  </div>
+<div id="targetWrapper">
+  <div id="chordName" class="chordName">Chord Name</div>
+  <div id="targetSheet"></div>
+</div>
 
-  <script>
-    // --- DOM Elements ---
-    const status = document.getElementById("status");
-    const devicesDiv = document.getElementById("devices");
-    const noteDiv = document.getElementById("note");
-    const sheetDiv = document.getElementById("sheet");
-    const bpmInput = document.getElementById("bpmInput");
+<div id="bpmControl">
+  <label>BPM: <input type="number" id="bpmInput" value="60" min="30" max="240"></label>
+</div>
 
-    // --- Notes ---
-    const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-    let targetNote = "";
+<script>
+/* -------------------- Constants -------------------- */
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const C4 = 60, C5 = 72;
 
-    // --- Web Audio for Metronome ---
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    let bpm = parseInt(bpmInput.value);
-    let metronomeInterval = null;
+/* -------------------- State -------------------- */
+let targetChord = [];
+let playedNotes = new Set();
 
-    // Hi-hat style click using short white noise burst
-    function playClick() {
-      const bufferSize = audioCtx.sampleRate * 0.02;
-      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-      const noise = audioCtx.createBufferSource();
-      noise.buffer = buffer;
-      const gainNode = audioCtx.createGain();
-      gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.02);
-      noise.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      noise.start();
-      noise.stop(audioCtx.currentTime + 0.02);
+/* -------------------- MIDI Utils -------------------- */
+function midiToName(n){
+  return NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
+}
+
+/* -------------------- Chord Logic -------------------- */
+function getRandomChord(){
+  const root = Math.floor(Math.random() * (C5 - C4)) + C4;
+  const isMinor = Math.random() < 0.5;
+  return isMinor ? [root, root+3, root+7] : [root, root+4, root+7];
+}
+
+// Determine chord name (basic triads only)
+function getChordName(chord){
+  if(chord.length !== 3) return "Unknown";
+  const rootName = NOTE_NAMES[chord[0]%12];
+  const interval1 = chord[1] - chord[0];
+  const interval2 = chord[2] - chord[1];
+  if(interval1 === 4 && interval2 === 3) return rootName + " Major";
+  if(interval1 === 3 && interval2 === 4) return rootName + " Minor";
+  return "Unknown";
+}
+
+/* -------------------- Sheet Music -------------------- */
+function drawChord(midiNotes, highlightNotes=[]){
+  const container = document.getElementById("targetSheet");
+  container.innerHTML = "";
+  const VF = Vex.Flow;
+  const renderer = new VF.Renderer(container, VF.Renderer.Backends.SVG);
+  renderer.resize(300,180);
+  const ctx = renderer.getContext();
+
+  const stave = new VF.Stave(10,40,280);
+  stave.addClef("treble").setContext(ctx).draw();
+
+  const keys = midiNotes.map(n=>{
+    const name = NOTE_NAMES[n%12].toLowerCase();
+    const octave = Math.floor(n/12)-1;
+    return `${name}/${octave}`;
+  });
+
+  const note = new VF.StaveNote({clef:"treble", keys, duration:"q"});
+  keys.forEach((k,i)=>{
+    if(k.includes("#")) note.addAccidental(i,new VF.Accidental("#"));
+    if(highlightNotes.includes(midiNotes[i])){
+      note.setKeyStyle(i,{fillStyle:"green", strokeStyle:"green"});
     }
+  });
 
-    function startMetronome() {
-      if (metronomeInterval) clearInterval(metronomeInterval);
-      const interval = (60 / bpm) * 1000;
-      metronomeInterval = setInterval(playClick, interval);
+  const voice = new VF.Voice({num_beats:1, beat_value:4});
+  voice.addTickables([note]);
+  new VF.Formatter().joinVoices([voice]).format([voice],250);
+  voice.draw(ctx, stave);
+}
+
+/* -------------------- Game Logic -------------------- */
+function newChord(){
+  playedNotes.clear();
+  targetChord = getRandomChord();
+  document.getElementById("chordName").textContent = getChordName(targetChord);
+  drawChord(targetChord, []);
+}
+
+function checkChord(){
+  const allCorrect = targetChord.every(n => playedNotes.has(n));
+  if(allCorrect) newChord();
+}
+
+/* -------------------- MIDI Handling -------------------- */
+function handleMidiMessage(msg){
+  const [type, note, velocity] = msg.data;
+
+  if(type === 144 && velocity>0) playedNotes.add(note); // note-on
+  else if(type===128 || (type===144 && velocity===0)) playedNotes.delete(note); // note-off
+
+  drawChord(targetChord, [...playedNotes]);
+  checkChord();
+}
+
+/* -------------------- MIDI Init -------------------- */
+function initMidi(){
+  navigator.requestMIDIAccess().then(midi=>{
+    document.getElementById("status").textContent="MIDI ready";
+    for(const input of midi.inputs.values()){
+      input.onmidimessage=handleMidiMessage;
     }
+    newChord();
+  });
+}
 
-    function setBPM(newBPM) {
-      bpm = newBPM;
-      startMetronome();
-    }
+/* -------------------- Metronome -------------------- */
+const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+let bpm = parseInt(document.getElementById("bpmInput").value);
+let metronomeInterval = null;
 
-    bpmInput.addEventListener("change", () => setBPM(parseInt(bpmInput.value)));
+function playClick(){
+  const bufferSize = audioCtx.sampleRate*0.02;
+  const buffer = audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i]=Math.random()*2-1;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0.3,audioCtx.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01,audioCtx.currentTime+0.02);
+  noise.connect(gainNode); gainNode.connect(audioCtx.destination);
+  noise.start(); noise.stop(audioCtx.currentTime+0.02);
+}
 
-    // --- Resume AudioContext on first user interaction ---
-    function resumeAudio() {
-      if (audioCtx.state === "suspended") audioCtx.resume();
-    }
-    document.body.addEventListener("click", resumeAudio, { once: true });
-    document.body.addEventListener("touchstart", resumeAudio, { once: true });
+function startMetronome(){
+  if(metronomeInterval) clearInterval(metronomeInterval);
+  metronomeInterval = setInterval(playClick, (60/bpm)*1000);
+}
 
-    // --- MIDI Utilities ---
-    function midiNoteToName(note) {
-      const name = NOTE_NAMES[note % 12];
-      const octave = Math.floor(note / 12) - 1;
-      return name + octave;
-    }
+document.getElementById("bpmInput").addEventListener("change", e=>{
+  bpm=parseInt(e.target.value);
+  startMetronome();
+});
 
-    function getRandomNote() {
-      const midiNumber = Math.floor(Math.random() * (72 - 60 + 1)) + 60; // C4-C5
-      return midiNoteToName(midiNumber);
-    }
+// Resume audio on first interaction
+function resumeAudio(){
+  if(audioCtx.state==="suspended") audioCtx.resume();
+}
+document.body.addEventListener("click", resumeAudio,{once:true});
+document.body.addEventListener("touchstart", resumeAudio,{once:true});
 
-    function updateSheet(noteName) {
-      // Clear previous rendering
-      sheetDiv.innerHTML = "";
+/* -------------------- Start App -------------------- */
+initMidi();
+startMetronome();
+</script>
 
-      const VF = Vex.Flow;
-      const div = sheetDiv;
-      const renderer = new VF.Renderer(div, VF.Renderer.Backends.SVG);
-      renderer.resize(300, 150);
-      const context = renderer.getContext();
-      context.setFont("Arial", 10);
-
-      const stave = new VF.Stave(10, 40, 280);
-      stave.addClef("treble");
-      stave.setContext(context).draw();
-
-      // Convert noteName to VexFlow format
-      let vfNoteName = noteName[0].toLowerCase();
-      let octave = parseInt(noteName.slice(-1));
-      if (noteName.includes("#")) vfNoteName += "#";
-
-      const note = new VF.StaveNote({ clef: "treble", keys: [`${vfNoteName}/${octave}`], duration: "q" });
-      if (vfNoteName.includes("#")) note.addAccidental(0, new VF.Accidental("#"));
-
-      const voice = new VF.Voice({ num_beats: 1, beat_value: 4 });
-      voice.addTickables([note]);
-
-      const formatter = new VF.Formatter().joinVoices([voice]).format([voice], 280);
-      voice.draw(context, stave);
-    }
-
-    function updateTargetNote() {
-      targetDiv = targetNote; // for debugging
-      updateSheet(targetNote);
-    }
-
-    function checkNote(noteName) {
-      if (noteName === targetNote) {
-        targetNote = getRandomNote();
-        updateTargetNote();
-      }
-    }
-
-    function handleMidiMessage(msg) {
-      const [type, note, velocity] = msg.data;
-      if (type === 144 && velocity > 0) { // Note ON
-        const noteName = midiNoteToName(note);
-        noteDiv.textContent = `Your Note: ${noteName}`;
-        checkNote(noteName);
-      }
-    }
-
-    function listMidiDevices(midiAccess) {
-      if (midiAccess.inputs.size === 0) {
-        devicesDiv.textContent = "No MIDI devices connected.";
-        return;
-      }
-
-      let list = "<ul>";
-      for (const input of midiAccess.inputs.values()) {
-        list += `<li><strong>${input.name}</strong> - ${input.manufacturer} (ID: ${input.id})</li>`;
-      }
-      list += "</ul>";
-      devicesDiv.innerHTML = list;
-    }
-
-    function setupMidiInputs(midiAccess) {
-      for (const input of midiAccess.inputs.values()) {
-        input.onmidimessage = handleMidiMessage;
-      }
-    }
-
-    function initMidi() {
-      if (!navigator.requestMIDIAccess) {
-        status.textContent = "Web MIDI not supported";
-        return;
-      }
-
-      navigator.requestMIDIAccess().then(
-        (midiAccess) => {
-          status.textContent = "MIDI ready";
-          listMidiDevices(midiAccess);
-          setupMidiInputs(midiAccess);
-          targetNote = getRandomNote();
-          updateTargetNote();
-          startMetronome();
-        },
-        () => {
-          status.textContent = "MIDI access denied";
-        }
-      );
-    }
-
-    // --- Start App ---
-    initMidi();
-  </script>
 </body>
 </html>
