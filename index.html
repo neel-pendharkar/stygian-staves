@@ -1,49 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Mini Music App - Random Chords + Metronome</title>
-  <script src="https://cdn.jsdelivr.net/npm/vexflow/releases/vexflow-min.js"></script>
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-      font-size: 20px;
-    }
-
-    #targetWrapper {
-      width: 100%;
-      border: 2px solid #ccc;
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 20px;
-    }
-
-    .chordName {
-      font-size: 28px;
-      font-weight: bold;
-      margin-bottom: 10px;
-      text-align: center;
-    }
-
-    #targetSheet {
-      font-size: 32px;
-      text-align: center;
-    }
-
-    #devices, #bpmControl {
-      margin-top: 20px;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Mini Music App - C Major Scale Chords</title>
+<script src="https://cdn.jsdelivr.net/npm/vexflow/releases/vexflow-min.js"></script>
+<style>
+  body { font-family: sans-serif; padding: 20px; font-size: 20px; }
+  #status { margin-bottom: 20px; font-weight: bold; }
+  #targetWrapper { border: 2px solid #ccc; border-radius: 8px; padding: 10px; width: 100%; margin-bottom: 20px; }
+  #chordName { font-size: 28px; font-weight: bold; text-align: center; margin-bottom: 10px; }
+  #targetSheet { text-align: center; }
+  #bpmControl { margin-top: 20px; }
+</style>
 </head>
 <body>
 
-<h1>Mini Music App – Random Chords</h1>
-<div id="status">Waiting for MIDI…</div>
-<div id="devices"></div>
+<h1>Mini Music App – C Major Scale Chords</h1>
+<div id="status">Click anywhere to enable MIDI and audio</div>
 
 <div id="targetWrapper">
-  <div id="chordName" class="chordName">Chord Name</div>
+  <div id="chordName">Chord Name</div>
   <div id="targetSheet"></div>
 </div>
 
@@ -54,37 +30,59 @@
 <script>
 /* -------------------- Constants -------------------- */
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-const C4 = 60, C5 = 72;
+const C_MAJOR_SCALE_ROOTS = [
+  {name: "C", type: "major", notes: [0, 4, 7]},
+  {name: "D", type: "minor", notes: [2, 5, 9]},
+  {name: "E", type: "minor", notes: [4, 7, 11]},
+  {name: "F", type: "major", notes: [5, 9, 0]},
+  {name: "G", type: "major", notes: [7, 11, 2]},
+  {name: "A", type: "minor", notes: [9, 0, 4]},
+  {name: "B", type: "dim", notes: [11, 2, 5]}
+];
 
 /* -------------------- State -------------------- */
 let targetChord = [];
-let playedNotes = new Set();
+let pressedNotes = new Set();
+let audioCtx = null;
+let metronomeInterval = null;
+let chordCompleted = false;
 
-/* -------------------- MIDI Utils -------------------- */
-function midiToName(n){
-  return NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
+/* -------------------- MIDI & Audio Initialization -------------------- */
+function initApp() {
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(audioCtx.state === "suspended") audioCtx.resume();
+
+  navigator.requestMIDIAccess().then(midi => {
+    document.getElementById("status").textContent = "MIDI Ready!";
+    for(const input of midi.inputs.values()) input.onmidimessage = handleMidiMessage;
+  }).catch(()=>document.getElementById("status").textContent="MIDI access denied");
+
+  startMetronome(parseInt(document.getElementById("bpmInput").value));
+  newChord();
 }
 
-/* -------------------- Chord Logic -------------------- */
-function getRandomChord(){
-  const root = Math.floor(Math.random() * (C5 - C4)) + C4;
-  const isMinor = Math.random() < 0.5;
-  return isMinor ? [root, root+3, root+7] : [root, root+4, root+7];
+/* -------------------- Utility Functions -------------------- */
+function midiToName(n) {
+  return NOTE_NAMES[n%12] + (Math.floor(n/12)-1);
 }
 
-// Determine chord name (basic triads only)
-function getChordName(chord){
-  if(chord.length !== 3) return "Unknown";
-  const rootName = NOTE_NAMES[chord[0]%12];
-  const interval1 = chord[1] - chord[0];
-  const interval2 = chord[2] - chord[1];
-  if(interval1 === 4 && interval2 === 3) return rootName + " Major";
-  if(interval1 === 3 && interval2 === 4) return rootName + " Minor";
+function getRandomChord() {
+  const choice = C_MAJOR_SCALE_ROOTS[Math.floor(Math.random() * C_MAJOR_SCALE_ROOTS.length)];
+  const baseOctave = 60; // C4
+  return choice.notes.map(n => n + baseOctave);
+}
+
+function getChordName(chord) {
+  for(const c of C_MAJOR_SCALE_ROOTS) {
+    const baseOctave = 60;
+    const expected = c.notes.map(n => n + baseOctave);
+    if(JSON.stringify(chord) === JSON.stringify(expected)) return c.name + " " + (c.type==="dim"?"dim":c.type);
+  }
   return "Unknown";
 }
 
-/* -------------------- Sheet Music -------------------- */
-function drawChord(midiNotes, highlightNotes=[]){
+/* -------------------- Drawing Chord Sheet -------------------- */
+function drawChordSheet(chord, highlight=[]) {
   const container = document.getElementById("targetSheet");
   container.innerHTML = "";
   const VF = Vex.Flow;
@@ -95,7 +93,7 @@ function drawChord(midiNotes, highlightNotes=[]){
   const stave = new VF.Stave(10,40,280);
   stave.addClef("treble").setContext(ctx).draw();
 
-  const keys = midiNotes.map(n=>{
+  const keys = chord.map(n=>{
     const name = NOTE_NAMES[n%12].toLowerCase();
     const octave = Math.floor(n/12)-1;
     return `${name}/${octave}`;
@@ -104,9 +102,7 @@ function drawChord(midiNotes, highlightNotes=[]){
   const note = new VF.StaveNote({clef:"treble", keys, duration:"q"});
   keys.forEach((k,i)=>{
     if(k.includes("#")) note.addAccidental(i,new VF.Accidental("#"));
-    if(highlightNotes.includes(midiNotes[i])){
-      note.setKeyStyle(i,{fillStyle:"green", strokeStyle:"green"});
-    }
+    if(highlight.includes(chord[i])) note.setKeyStyle(i,{fillStyle:"green", strokeStyle:"green"});
   });
 
   const voice = new VF.Voice({num_beats:1, beat_value:4});
@@ -116,80 +112,69 @@ function drawChord(midiNotes, highlightNotes=[]){
 }
 
 /* -------------------- Game Logic -------------------- */
-function newChord(){
-  playedNotes.clear();
+function newChord() {
+  pressedNotes.clear();
   targetChord = getRandomChord();
   document.getElementById("chordName").textContent = getChordName(targetChord);
-  drawChord(targetChord, []);
+  drawChordSheet(targetChord, []);
 }
 
-function checkChord(){
-  const allCorrect = targetChord.every(n => playedNotes.has(n));
-  if(allCorrect) newChord();
+function checkChord() {
+  const allPressed = targetChord.every(n => pressedNotes.has(n));
+  if(allPressed && pressedNotes.size === 3) {
+    chordCompleted = true; // wait for next metronome click
+  }
 }
 
 /* -------------------- MIDI Handling -------------------- */
-function handleMidiMessage(msg){
+function handleMidiMessage(msg) {
   const [type, note, velocity] = msg.data;
+  if(type===144 && velocity>0) pressedNotes.add(note);  // note-on
+  else if(type===128 || (type===144 && velocity===0)) pressedNotes.delete(note); // note-off
 
-  if(type === 144 && velocity>0) playedNotes.add(note); // note-on
-  else if(type===128 || (type===144 && velocity===0)) playedNotes.delete(note); // note-off
-
-  drawChord(targetChord, [...playedNotes]);
+  drawChordSheet(targetChord, Array.from(pressedNotes));
   checkChord();
 }
 
-/* -------------------- MIDI Init -------------------- */
-function initMidi(){
-  navigator.requestMIDIAccess().then(midi=>{
-    document.getElementById("status").textContent="MIDI ready";
-    for(const input of midi.inputs.values()){
-      input.onmidimessage=handleMidiMessage;
-    }
-    newChord();
-  });
-}
-
 /* -------------------- Metronome -------------------- */
-const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-let bpm = parseInt(document.getElementById("bpmInput").value);
-let metronomeInterval = null;
+function playClick() {
+  if(!audioCtx) return;
 
-function playClick(){
+  // Play click sound
   const bufferSize = audioCtx.sampleRate*0.02;
   const buffer = audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
-  for(let i=0;i<bufferSize;i++) data[i]=Math.random()*2-1;
+  for(let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+
   const noise = audioCtx.createBufferSource();
   noise.buffer = buffer;
-  const gainNode = audioCtx.createGain();
-  gainNode.gain.setValueAtTime(0.3,audioCtx.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.01,audioCtx.currentTime+0.02);
-  noise.connect(gainNode); gainNode.connect(audioCtx.destination);
-  noise.start(); noise.stop(audioCtx.currentTime+0.02);
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.3,audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01,audioCtx.currentTime+0.02);
+  noise.connect(gain);
+  gain.connect(audioCtx.destination);
+  noise.start();
+  noise.stop(audioCtx.currentTime+0.02);
+
+  // Generate new chord if previous was completed
+  if(chordCompleted) {
+    chordCompleted = false;
+    newChord();
+  }
 }
 
-function startMetronome(){
+function startMetronome(bpm) {
   if(metronomeInterval) clearInterval(metronomeInterval);
   metronomeInterval = setInterval(playClick, (60/bpm)*1000);
 }
 
 document.getElementById("bpmInput").addEventListener("change", e=>{
-  bpm=parseInt(e.target.value);
-  startMetronome();
+  startMetronome(parseInt(e.target.value));
 });
 
-// Resume audio on first interaction
-function resumeAudio(){
-  if(audioCtx.state==="suspended") audioCtx.resume();
-}
-document.body.addEventListener("click", resumeAudio,{once:true});
-document.body.addEventListener("touchstart", resumeAudio,{once:true});
-
-/* -------------------- Start App -------------------- */
-initMidi();
-startMetronome();
+// Resume Audio + MIDI on gesture
+document.body.addEventListener("click", initApp, {once:true});
+document.body.addEventListener("touchstart", initApp, {once:true});
 </script>
-
 </body>
 </html>
