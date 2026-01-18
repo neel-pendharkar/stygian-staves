@@ -147,8 +147,9 @@ function checkChord() {
 
 
 /* ===================== MIDI ===================== */
-
 function handleMidiMessage(msg) {
+  if (!gameState.targetChord) return;
+
   const [type, note, velocity] = msg.data;
 
   if (type === 144 && velocity > 0) {
@@ -164,6 +165,7 @@ function handleMidiMessage(msg) {
 
   checkChord();
 }
+
 
 
 /* ===================== METRONOME ===================== */
@@ -227,3 +229,13 @@ document.getElementById("bpmInput").addEventListener("change", e => {
 
 document.body.addEventListener("click", initApp, { once: true });
 document.body.addEventListener("touchstart", initApp, { once: true });
+
+document.getElementById("keySelect").addEventListener("change", e => {
+  musicState.key = parseInt(e.target.value);
+  newChord();
+});
+
+document.getElementById("scaleSelect").addEventListener("change", e => {
+  musicState.scale = e.target.value;
+  newChord();
+});

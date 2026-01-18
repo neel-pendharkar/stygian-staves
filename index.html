@@ -11,6 +11,7 @@
   #chordName { font-size: 28px; font-weight: bold; text-align: center; margin-bottom: 10px; }
   #targetSheet { text-align: center; }
   #bpmControl { margin-top: 20px; }
+  #controls label { font-size: 18px; }
 </style>
 </head>
 <body>
@@ -23,9 +24,39 @@
   <div id="targetSheet"></div>
 </div>
 
-<div id="bpmControl">
-  <label>BPM: <input type="number" id="bpmInput" value="60" min="30" max="240"></label>
+<div id="controls">
+  <label>
+    Key:
+    <select id="keySelect">
+      <option value="0">C</option>
+      <option value="1">C#</option>
+      <option value="2">D</option>
+      <option value="3">D#</option>
+      <option value="4">E</option>
+      <option value="5">F</option>
+      <option value="6">F#</option>
+      <option value="7">G</option>
+      <option value="8">G#</option>
+      <option value="9">A</option>
+      <option value="10">A#</option>
+      <option value="11">B</option>
+    </select>
+  </label>
+
+  <label style="margin-left: 15px;">
+    Scale:
+    <select id="scaleSelect">
+      <option value="major">Major</option>
+      <option value="minor">Minor</option>
+    </select>
+  </label>
+
+  <label style="margin-left: 15px;">
+    BPM:
+    <input type="number" id="bpmInput" value="60" min="30" max="240">
+  </label>
 </div>
+
 
 <script src = "main.js"></script>
 </body>
