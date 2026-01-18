@@ -15,7 +15,6 @@ const CHORD_QUALITIES = {
   min7:  [0, 3, 7, 10]
 };
 
-// Diatonic harmony rules
 const DIATONIC_QUALITIES = {
   major: ["major", "minor", "minor", "major", "major", "minor", "dim"],
   minor: ["minor", "dim", "major", "minor", "minor", "major", "major"]
@@ -25,10 +24,9 @@ const DIATONIC_QUALITIES = {
 /* ===================== APP STATE ===================== */
 
 const musicState = {
-  key: 0,              // C
+  key: 0,        // C
   scale: "major",
-  octave: 4,
-  allowedChordSizes: [3] // triads for now
+  octave: 4
 };
 
 const gameState = {
@@ -41,6 +39,14 @@ let audioCtx = null;
 let metronomeInterval = null;
 
 
+/* ===================== HAND POSITION ===================== */
+
+let handPosition = {
+  min: 60, // C4
+  max: 72  // C5
+};
+
+
 /* ===================== UTILITIES ===================== */
 
 function midiToName(n) {
@@ -48,18 +54,38 @@ function midiToName(n) {
 }
 
 function buildChord({ key, scale, degree, quality, octave }) {
-  const scaleIntervals = SCALES[scale];
-  const root = key + scaleIntervals[degree] + octave * 12;
-  const intervals = CHORD_QUALITIES[quality];
+  const root =
+    key + SCALES[scale][degree] + octave * 12;
 
-  return intervals.map(i => root + i);
+  return CHORD_QUALITIES[quality].map(i => root + i);
+}
+
+function fitsHandPosition(notes) {
+  return notes.every(n => n >= handPosition.min && n <= handPosition.max);
+}
+
+function invertUp(notes) {
+  const inverted = [...notes];
+  inverted.push(inverted.shift() + 12);
+  return inverted;
+}
+
+function fitChordToHand(notes, maxInversions = 3) {
+  let fitted = [...notes];
+
+  for (let i = 0; i <= maxInversions; i++) {
+    if (fitsHandPosition(fitted)) return fitted;
+    fitted = invertUp(fitted);
+  }
+
+  return fitted;
 }
 
 function generateRandomChord() {
   const degree = Math.floor(Math.random() * 7);
   const quality = DIATONIC_QUALITIES[musicState.scale][degree];
 
-  const notes = buildChord({
+  const rawNotes = buildChord({
     key: musicState.key,
     scale: musicState.scale,
     degree,
@@ -67,18 +93,16 @@ function generateRandomChord() {
     octave: musicState.octave
   });
 
-  return {
-    degree,
-    quality,
-    notes
-  };
+  const notes = fitChordToHand(rawNotes);
+
+  return { degree, quality, notes };
 }
 
 function chordDisplayName(chord) {
-  const rootName = NOTE_NAMES[
-    (musicState.key + SCALES[musicState.scale][chord.degree]) % 12
-  ];
-  return `${rootName} ${chord.quality}`;
+  const rootPc =
+    (musicState.key + SCALES[musicState.scale][chord.degree]) % 12;
+
+  return `${NOTE_NAMES[rootPc]} ${chord.quality}`;
 }
 
 
@@ -147,6 +171,7 @@ function checkChord() {
 
 
 /* ===================== MIDI ===================== */
+
 function handleMidiMessage(msg) {
   if (!gameState.targetChord) return;
 
@@ -165,7 +190,6 @@ function handleMidiMessage(msg) {
 
   checkChord();
 }
-
 
 
 /* ===================== METRONOME ===================== */
@@ -227,9 +251,6 @@ document.getElementById("bpmInput").addEventListener("change", e => {
   startMetronome(parseInt(e.target.value));
 });
 
-document.body.addEventListener("click", initApp, { once: true });
-document.body.addEventListener("touchstart", initApp, { once: true });
-
 document.getElementById("keySelect").addEventListener("change", e => {
   musicState.key = parseInt(e.target.value);
   newChord();
@@ -239,3 +260,6 @@ document.getElementById("scaleSelect").addEventListener("change", e => {
   musicState.scale = e.target.value;
   newChord();
 });
+
+document.body.addEventListener("click", initApp, { once: true });
+document.body.addEventListener("touchstart", initApp, { once: true });
