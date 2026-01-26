@@ -43,7 +43,7 @@ let metronomeInterval = null;
 
 let handPosition = {
   min: 60, // C4
-  max: 72  // C5
+  max: 71  // C5
 };
 
 
@@ -67,11 +67,27 @@ function fitsHandPosition(notes) {
 function invertUp(notes) {
   const inverted = [...notes];
   inverted.push(inverted.shift() + 12);
-  return inverted;
+  return inverted.sort((a, b) => a - b);
 }
 
+function invertDown(notes) {
+  const inverted = [...notes];
+  inverted.unshift(inverted.pop() - 12);
+  return inverted.sort((a, b) => a - b);
+}
+
+
 function fitChordToHand(notes, maxInversions = 3) {
-  let fitted = [...notes];
+
+  let fitted = [...notes]; 
+  
+  for (let i = 0; i <= maxInversions; i++) 
+  { 
+    if (fitsHandPosition(fitted)) return fitted; 
+    fitted = invertDown(fitted); 
+  }
+
+  fitted = [...notes];
 
   for (let i = 0; i <= maxInversions; i++) {
     if (fitsHandPosition(fitted)) return fitted;
