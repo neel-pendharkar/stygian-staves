@@ -43,7 +43,7 @@ let metronomeInterval = null;
 
 let handPosition = {
   min: 60, // C4
-  max: 71  // C5
+  max: 71  // B4
 };
 
 
