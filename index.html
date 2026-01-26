@@ -12,6 +12,18 @@
   #targetSheet { text-align: center; }
   #bpmControl { margin-top: 20px; }
   #controls label { font-size: 18px; }
+  #handOctaveSlider {
+    width: 300px;        /* make it wider */
+    height: 20px;        /* a bit taller for easier dragging */
+    margin-top: 5px;
+    accent-color: #8be9fd; /* optional: matches your theme */
+  }
+
+  #handRangeLabel {
+    margin-top: 5px;
+    font-weight: bold;
+    font-size: 18px;
+  }
 </style>
 </head>
 <body>
@@ -56,15 +68,13 @@
     <input type="number" id="bpmInput" value="60" min="30" max="240">
   </label>
 
-  <label style="margin-left: 15px;">
-    Hand Min (MIDI note):
-    <input type="number" id="handMin" value="60" min="21" max="108">
+
+  <label style="margin-left: 15px; display:block; margin-top:10px;">
+    Hand Position (Octave):
+    <input type="range" id="handOctaveSlider" min="36" max="96" value="60">
+    <div id="handRangeLabel">C4 – B4</div>
   </label>
 
-  <label style="margin-left: 15px;">
-    Hand Max (MIDI note):
-    <input type="number" id="handMax" value="71" min="21" max="108">
-  </label>
 
 </div>
 

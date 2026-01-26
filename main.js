@@ -77,7 +77,7 @@ function invertDown(notes) {
 }
 
 
-function fitChordToHand(notes, maxInversions = 3) {
+function fitChordToHand(notes, maxInversions = 100) {
 
   let fitted = [...notes]; 
   
@@ -277,19 +277,28 @@ document.getElementById("scaleSelect").addEventListener("change", e => {
   newChord();
 });
 
-document.getElementById("handMin").addEventListener("change", e => {
-  const val = parseInt(e.target.value);
-  if (val <= handPosition.max) handPosition.min = val;
-  else e.target.value = handPosition.min; // prevent invalid input
-  newChord(); // refresh chord to fit new range
-});
+const handMinSlider = document.getElementById("handMinSlider");
+const handMaxSlider = document.getElementById("handMaxSlider");
 
-document.getElementById("handMax").addEventListener("change", e => {
-  const val = parseInt(e.target.value);
-  if (val >= handPosition.min) handPosition.max = val;
-  else e.target.value = handPosition.max; // prevent invalid input
-  newChord(); // refresh chord to fit new range
-});
+const handOctaveSlider = document.getElementById("handOctaveSlider");
+const handRangeLabel = document.getElementById("handRangeLabel");
+
+function updateHandPositionOctave() {
+  const minVal = parseInt(handOctaveSlider.value);
+  const maxVal = minVal + 11; // always 1 octave above
+
+  handPosition.min = minVal;
+  handPosition.max = maxVal;
+
+  // Update label
+  handRangeLabel.textContent = `${midiToName(minVal)} – ${midiToName(maxVal)}`;
+
+  // Refresh chord to fit new hand position
+  newChord();
+}
+
+handOctaveSlider.addEventListener("input", updateHandPositionOctave);
+
 
 document.body.addEventListener("click", initApp, { once: true });
 document.body.addEventListener("touchstart", initApp, { once: true });
